@@ -1,23 +1,60 @@
-import { FC, useMemo } from 'react';
+import { FC, useEffect, useMemo, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { Preloader } from '../ui/preloader';
 import { OrderInfoUI } from '../ui/order-info';
-import { TIngredient } from '@utils-types';
+import { TIngredient, TOrder } from '@utils-types';
+import { useDispatch, useSelector } from '../../services/store';
+import { fetchIngredients } from '../../services/slices';
+import { getOrderByNumberApi } from '@api';
 
 export const OrderInfo: FC = () => {
-  /** TODO: взять переменные orderData и ingredients из стора */
-  const orderData = {
-    createdAt: '',
-    ingredients: [],
-    _id: '',
-    status: '',
-    name: '',
-    updatedAt: 'string',
-    number: 0
-  };
+  const { number } = useParams<{ number: string }>();
+  const dispatch = useDispatch();
+  const feedOrders = useSelector((state) => state.feed.orders);
+  const profileOrders = useSelector((state) => state.orders.items);
+  const ingredients = useSelector((state) => state.ingredients.items);
+  const [orderData, setOrderData] = useState<TOrder | null>(null);
 
-  const ingredients: TIngredient[] = [];
+  useEffect(() => {
+    if (ingredients.length === 0) {
+      dispatch(fetchIngredients());
+    }
+  }, [dispatch, ingredients.length]);
 
-  /* Готовим данные для отображения */
+  useEffect(() => {
+    if (!number) {
+      return;
+    }
+
+    const orderNumber = Number(number);
+    const existingOrder = [...feedOrders, ...profileOrders].find(
+      (item) => item.number === orderNumber
+    );
+
+    if (existingOrder) {
+      setOrderData(existingOrder);
+      return;
+    }
+
+    let isMounted = true;
+
+    getOrderByNumberApi(orderNumber)
+      .then((response) => {
+        if (isMounted) {
+          setOrderData(response.orders[0] || null);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setOrderData(null);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [feedOrders, number, profileOrders]);
+
   const orderInfo = useMemo(() => {
     if (!orderData || !ingredients.length) return null;
 
@@ -57,7 +94,7 @@ export const OrderInfo: FC = () => {
       date,
       total
     };
-  }, [orderData, ingredients]);
+  }, [ingredients, orderData]);
 
   if (!orderInfo) {
     return <Preloader />;
