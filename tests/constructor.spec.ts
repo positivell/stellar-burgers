@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs';
 import path from 'path';
 import { expect, test } from '@playwright/test';
 
@@ -5,6 +6,17 @@ const harPath = path.join(__dirname, 'fixtures', 'constructor.har');
 
 const ingredientName = 'Краторная булка N-200i';
 const fillingName = 'Биокотлета из марсианской Магнолии';
+const har = JSON.parse(readFileSync(harPath, 'utf8'));
+
+const orderEntry = har.log.entries.find(
+  (entry: any) =>
+    entry.request.method === 'POST' &&
+    entry.request.url.endsWith('/orders')
+);
+
+const response = JSON.parse(orderEntry.response.content.text);
+
+const expectedOrderNumber = String(response.order.number);
 
 async function waitForAppReady(page: Parameters<typeof test>[0]['page']) {
   await expect(page.getByText('Соберите бургер')).toBeVisible();
@@ -34,11 +46,13 @@ test('добавляет ингредиенты в конструктор', asyn
   await page.goto('/');
   await waitForAppReady(page);
 
+  const constructor = page.locator('section').filter({ hasText: 'Оформить заказ' }).first();
+
   await addIngredient(page, ingredientName);
   await addIngredient(page, fillingName);
 
-  await expect(page.locator('span').filter({ hasText: /^Краторная булка N-200i \(верх\)$/ })).toBeVisible();
-  await expect(page.locator('span').filter({ hasText: /^Биокотлета из марсианской Магнолии$/ })).toBeVisible();
+  await expect(constructor.locator('span').filter({ hasText: /^Краторная булка N-200i \(верх\)$/ })).toBeVisible();
+  await expect(constructor.locator('span').filter({ hasText: /^Биокотлета из марсианской Магнолии$/ })).toBeVisible();
 });
 
 test('открывает и закрывает модальное окно ингредиента', async ({ page }) => {
@@ -66,17 +80,20 @@ test('оформляет заказ и закрывает модальное о�
   await page.goto('/');
   await waitForAppReady(page);
 
+  const modal = page.locator('#modals');
+  const constructor = page.locator('section').filter({ hasText: 'Оформить заказ' }).first();
+
   await addIngredient(page, ingredientName);
   await addIngredient(page, fillingName);
 
   await page.getByRole('button', { name: 'Оформить заказ' }).click();
 
-  await expect(page.getByText('идентификатор заказа')).toBeVisible();
-  await expect(page.getByText('4321')).toBeVisible();
+  await expect(modal.getByText('идентификатор заказа')).toBeVisible();
+  await expect(modal.getByText(expectedOrderNumber)).toBeVisible();
 
-  await expect(page.getByText('Выберите булки')).toHaveCount(2);
-  await expect(page.getByText('Выберите начинку')).toBeVisible();
+  await expect(constructor.getByText('Выберите булки')).toHaveCount(2);
+  await expect(constructor.getByText('Выберите начинку')).toBeVisible();
 
   await page.locator('button').filter({ has: page.locator('svg') }).last().click();
-  await expect(page.getByText('идентификатор заказа')).toHaveCount(0);
+  await expect(modal.getByText('идентификатор заказа')).toHaveCount(0);
 });
